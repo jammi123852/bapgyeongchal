@@ -8,6 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
@@ -95,13 +96,15 @@ def test_recommendation_id_is_optional(db: Session, user: User) -> None:
 def test_invalid_action_type_is_rejected(db: Session, user: User) -> None:
     """DB CHECK 제약으로 정의되지 않은 action 값을 막는다."""
     item = make_item(db, user)
+    # ORM Enum 은 DB 에 닿기 전에 StatementError 로 막으므로, raw SQL 로 DB 제약을 직접 검증한다.
     with pytest.raises((IntegrityError, DataError)):
         db.execute(
-            UserAction.__table__.insert().values(
-                user_id=user.id,
-                inventory_item_id=item.id,
-                action_type="EATEN_MAYBE",
-                actor="USER",
-            )
+            sa.text(
+                """
+                INSERT INTO user_actions (id, user_id, inventory_item_id, action_type, actor)
+                VALUES (gen_random_uuid(), :user_id, :item_id, 'EATEN_MAYBE', 'USER')
+                """
+            ),
+            {"user_id": user.id, "item_id": item.id},
         )
     db.rollback()
