@@ -13,7 +13,7 @@ from tests.conftest import make_item
 
 
 def test_create_user(db: Session) -> None:
-    user = User()
+    user = User(email="schema-basic@test.local", password_hash="not-a-real-hash")
     db.add(user)
     db.flush()
 

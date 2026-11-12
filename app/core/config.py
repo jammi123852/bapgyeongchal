@@ -5,6 +5,7 @@ secret 은 코드에 넣지 않는다. 모든 값은 환경변수 또는 .env �
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +30,12 @@ class Settings(BaseSettings):
 
     # SQLAlchemy echo. 로컬 디버깅용이며 기본은 꺼둔다.
     sql_echo: bool = False
+
+    # 인증 (Step 3). JWT_SECRET 은 필수이며 기본값을 두지 않는다.
+    jwt_secret: str = Field(min_length=32)
+    jwt_algorithm: str = "HS256"
+    # 모바일 앱 v0.1 은 refresh token 없이 access token 하나로 운영한다.
+    access_token_expire_minutes: int = 60 * 24 * 7
 
 
 @lru_cache

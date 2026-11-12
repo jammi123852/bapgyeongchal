@@ -73,7 +73,7 @@ def db(test_engine: Engine) -> Generator[Session, None, None]:
 
 @pytest.fixture
 def user(db: Session) -> User:
-    user = User()
+    user = User(email=f"{uuid.uuid4().hex}@test.local", password_hash="not-a-real-hash")
     db.add(user)
     db.flush()
     return user
