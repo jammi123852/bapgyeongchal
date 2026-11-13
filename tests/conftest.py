@@ -16,11 +16,13 @@ import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.session import create_app_engine
+from app.db.session import create_app_engine, get_db
+from app.main import app
 from app.models import InventoryItem, User
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -87,3 +89,31 @@ def make_item(db: Session, user: User, **kwargs: object) -> InventoryItem:
     db.add(item)
     db.flush()
     return item
+
+
+# --- API 테스트 공통 (Step 4~) ---
+
+API_PASSWORD = "correct-horse-1"
+
+
+@pytest.fixture
+def api(db: Session) -> Generator[TestClient, None, None]:
+    """테스트 트랜잭션 세션을 쓰는 TestClient."""
+
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+
+
+def signup_headers(client: TestClient, email: str | None = None) -> dict[str, str]:
+    """가입 후 Authorization 헤더를 돌려준다."""
+    email = email or f"{uuid.uuid4().hex[:10]}@example.com"
+    response = client.post("/auth/signup", json={"email": email, "password": API_PASSWORD})
+    assert response.status_code == 201, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}

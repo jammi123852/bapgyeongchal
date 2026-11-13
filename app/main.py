@@ -14,6 +14,7 @@ from fastapi import FastAPI
 
 from app.api.routes import auth as auth_routes
 from app.api.routes import health as health_routes
+from app.api.routes import inventory as inventory_routes
 from app.core.config import get_settings
 from app.db.session import SessionLocal, check_database_connection
 
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_routes.router)
     app.include_router(auth_routes.router)
+    app.include_router(inventory_routes.router)
     return app
 
 
