@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.enums import InventoryStatus, StorageType
+from app.core.enums import InventoryStatus, StorageType, UserActionType
 
 NAME_MAX_LENGTH = 100
 
@@ -74,3 +74,19 @@ class InventoryItemResponse(BaseModel):
     status: InventoryStatus
     created_at: datetime
     updated_at: datetime
+
+
+class ActionRequest(BaseModel):
+    """one-tap action. remaining_ratio 는 PARTIALLY_CONSUMED 에서만 쓴다.
+
+    앱은 0.75 / 0.5 / 0.25 프리셋 버튼을 권장한다 (슬라이더는 마찰).
+    """
+
+    action_type: UserActionType
+    remaining_ratio: Decimal | None = Field(default=None, max_digits=3, decimal_places=2)
+    recommendation_id: uuid.UUID | None = None
+
+
+class ActionResponse(BaseModel):
+    action_id: uuid.UUID
+    item: InventoryItemResponse

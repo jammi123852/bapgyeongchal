@@ -12,11 +12,14 @@ from app.core.enums import InventoryStatus
 from app.db.session import get_db
 from app.models import InventoryItem, User
 from app.schemas.inventory import (
+    ActionRequest,
+    ActionResponse,
     InventoryItemCreate,
     InventoryItemResponse,
     InventoryItemUpdate,
 )
 from app.services import inventory as inventory_service
+from app.services.actions import ActionError, record_action
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -82,3 +85,26 @@ def delete_item(
     inventory_service.soft_delete_item(db, item)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{item_id}/actions", response_model=ActionResponse, status_code=status.HTTP_201_CREATED)
+def create_action(
+    body: ActionRequest,
+    item: InventoryItem = Depends(get_owned_item),
+    db: Session = Depends(get_db),
+) -> ActionResponse:
+    """먹음 / 일부 먹음 / 버림 / 기한 지남 을 한 번에 기록한다."""
+    try:
+        action = record_action(
+            db,
+            item,
+            body.action_type,
+            remaining_ratio=body.remaining_ratio,
+            recommendation_id=body.recommendation_id,
+        )
+    except ActionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    db.commit()
+    db.refresh(item)
+    return ActionResponse(action_id=action.id, item=InventoryItemResponse.model_validate(item))
