@@ -66,3 +66,5 @@ class Recommendation(Base):
     created_at: Mapped[Any] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
+    # 앱 화면에 실제로 보인 시각. 계산만 되고 안 보였으면 null (Step 7).
+    shown_at: Mapped[Any] = mapped_column(sa.DateTime(timezone=True), nullable=True)

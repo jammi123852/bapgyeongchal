@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # 모바일 앱 v0.1 은 refresh token 없이 access token 하나로 운영한다.
     access_token_expire_minutes: int = 60 * 24 * 7
 
+    # Eat-First 기본 알고리즘 (baseline0 | baseline1). algorithm_version 으로 행마다 기록된다.
+    eat_first_algorithm: str = "baseline1"
+
 
 @lru_cache
 def get_settings() -> Settings:
