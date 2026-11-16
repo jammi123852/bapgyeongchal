@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # Eat-First 기본 알고리즘 (baseline0 | baseline1). algorithm_version 으로 행마다 기록된다.
     eat_first_algorithm: str = "baseline1"
 
+    # 브라우저(Expo web) 개발용 허용 origin. 네이티브 앱은 CORS 와 무관하다.
+    cors_origins: list[str] = ["http://localhost:8081", "http://127.0.0.1:8081"]
+
 
 @lru_cache
 def get_settings() -> Settings:

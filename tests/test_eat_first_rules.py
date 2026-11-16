@@ -10,6 +10,7 @@ import pytest
 from app.models import InventoryItem
 from app.services.eat_first import (
     FORBIDDEN_WORDS,
+    OPENED_TODAY_TEXT,
     REASON_TEMPLATES,
     Algorithm,
     Reason,
@@ -181,6 +182,7 @@ def test_baseline0_never_uses_opened_reason() -> None:
 def test_reason_texts_contain_no_forbidden_words() -> None:
     """안전 게이트: 상함·안전 판정이나 폐기 지시로 읽히는 문구 금지."""
     rendered = [template.format(n=3) for template in REASON_TEMPLATES.values()]
+    rendered.append(OPENED_TODAY_TEXT)
     for text in rendered:
         for word in FORBIDDEN_WORDS:
             assert word not in text, f"금지어 '{word}' 포함: {text}"
@@ -189,3 +191,4 @@ def test_reason_texts_contain_no_forbidden_words() -> None:
 def test_reason_text_rendering() -> None:
     assert Reason("expiry_dn", 2).text == "소비기한 D-2"
     assert Reason("opened_n_days", 3).text == "개봉한 지 3일 됐어요"
+    assert Reason("opened_n_days", 0).text == "오늘 개봉했어요"

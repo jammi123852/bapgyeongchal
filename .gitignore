@@ -14,6 +14,12 @@ venv/
 # local data
 pgdata/
 outputs/
+logs/
+
+# tool output / local tool settings
+.playwright-mcp/
+.claude/
+mobile/.claude/
 
 # editor / os
 .vscode/

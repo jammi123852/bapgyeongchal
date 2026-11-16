@@ -1,10 +1,19 @@
-# SoloSafe — v0.1 (Step 1: local foundation)
+# SoloSafe — v0.1
 
-1인 가구가 냉장고에 넣어둔 식품을 잊어 소비기한을 넘기고 버리는 문제를 다루는 서비스의
-백엔드 기반입니다.
+1인 가구가 냉장고에 넣어둔 식품을 잊어 소비기한을 넘기고 버리는 문제를 다루는 서비스입니다.
 
-**현재 단계는 Step 1(로컬 개발 기반 + PostgreSQL 데이터 계층)까지입니다.**
+**현재: v0.1 MUST 6개 구현 완료 (백엔드 Step 1~8 + 모바일 앱 `mobile/`).**
+Step 9(2~3명 2주 실사용 검증)는 사람이 진행해야 하는 단계라 아직 하지 않았습니다.
 바코드 / OCR / 레시피 / 알림 / ML / 회수제품 / 건강 기능은 **구현되어 있지 않습니다.**
+
+| 기능 | API |
+|---|---|
+| 가입 / 로그인 / 로그아웃 / 내 정보 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout`, `GET /me` |
+| 음식 등록 · 목록(임박순) · 상세 · 수정 · 삭제(soft) | `POST/GET /inventory`, `GET/PATCH/DELETE /inventory/{id}` |
+| 원탭 기록 (다 먹음 / 일부 / 버림 / 기한 지남) | `POST /inventory/{id}/actions` |
+| 오늘 먼저 먹을 것 (baseline1 + 이유) + 기록 | `POST /eat-first`, `POST /eat-first/{batch_id}/shown` |
+
+전체 API 문서: 서버 실행 후 http://127.0.0.1:8000/docs
 
 설계 근거 문서:
 
@@ -147,17 +156,41 @@ changUp/
 │  ├─ db/session.py              엔진/세션, DB 연결 확인
 │  ├─ models/                    User, Product, InventoryItem,
 │  │                             InventoryItemEvent, Recommendation, UserAction
-│  ├─ schemas/health.py          응답 스키마
-│  └─ api/routes/health.py       /health, /health/db
-├─ alembic/versions/0001_initial_schema.py
+│  ├─ core/security.py           비밀번호 해시(bcrypt), JWT
+│  ├─ schemas/                   요청/응답, feature_snapshot 계약(eat_first.py)
+│  ├─ services/                  inventory / actions / eat_first(정렬 규칙) / recommendations(기록)
+│  └─ api/routes/                health, auth, inventory, eat_first
+├─ alembic/versions/             0001 초기 스키마, 0002 인증, 0003 추천 노출 시각
 ├─ tests/
+├─ mobile/                       Expo(React Native) 앱
 ├─ docs/                         감사·설계 문서 (수정하지 않음)
 ├─ docker-compose.yml            로컬 PostgreSQL 전용
 └─ .env.example
 ```
 
-`repositories/`, `services/` 계층은 아직 만들지 않았습니다. Step 1 에는 담을 비즈니스 로직이
-없어서, 지금 만들면 빈 껍데기만 늘어나기 때문입니다. Step 2(등록/조회) 에서 필요해질 때 추가합니다.
+`repositories/` 계층은 두지 않았습니다. 조회가 단순해 service 에서 직접 쿼리합니다.
+
+---
+
+## 8-1. 모바일 앱 실행 (`mobile/`)
+
+```bash
+# 1) 백엔드 먼저 (위 6절)
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 2) 앱 — 브라우저로 보기
+cd mobile && npm install && npx expo start --web
+
+# 2') 앱 — 내 폰으로 보기 (Expo Go 앱 설치, PC 와 같은 와이파이)
+#     localhost 는 폰에서 PC 를 가리키지 않으므로 PC 의 LAN IP 를 넣는다.
+EXPO_PUBLIC_API_URL=http://<PC의 LAN IP>:8000 npx expo start
+```
+
+- 화면: 로그인/가입 → 홈(오늘 먼저 먹을 것 상위 3개 + 이유, 나머지 목록, 원탭 기록) → 음식 추가
+- 음식 추가: 이름 + 소비기한 버튼(오늘/내일/3일 뒤/7일 뒤/모름) 한 번. 개봉·보관은 '더 입력하기' 안에
+- 추천은 화면에 그려진 뒤에만 `/shown` 으로 노출 기록된다
+- WSL 에서 폰 연결 시 Windows 방화벽/포트 포워딩 설정이 필요할 수 있다 (확인 필요)
+- `eas build` 등 EAS 클라우드 빌드는 과금 가능성이 있어 사용하지 않았다
 
 ---
 

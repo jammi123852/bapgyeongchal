@@ -37,6 +37,8 @@ REASON_TEMPLATES: dict[str, str] = {
     "opened_n_days": "개봉한 지 {n}일 됐어요",
     "no_expiry": "소비기한이 등록되지 않았어요",
 }
+# opened_n_days 의 n=0 표기 ("개봉한 지 0일" 대신)
+OPENED_TODAY_TEXT = "오늘 개봉했어요"
 
 # 판정·지시로 읽힐 수 있는 표현. 문구에 들어가면 안 된다 (안전 게이트).
 FORBIDDEN_WORDS = ("상했", "안전", "버리세요", "위험", "식중독")
@@ -49,6 +51,8 @@ class Reason:
 
     @property
     def text(self) -> str:
+        if self.code == "opened_n_days" and self.n == 0:
+            return OPENED_TODAY_TEXT
         return REASON_TEMPLATES[self.code].format(n=self.n)
 
     def as_json(self) -> dict[str, object]:
