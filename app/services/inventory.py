@@ -23,6 +23,7 @@ from app.models import InventoryItem, InventoryItemEvent, User
 # 있지 않아 이벤트를 남기지 않는다 (추천·학습 feature 에 쓰이지 않는 필드).
 FIELD_EVENT_TYPES: dict[str, InventoryEventType] = {
     "expiry_date": InventoryEventType.EXPIRY_CHANGED,
+    "expiry_source": InventoryEventType.EXPIRY_CHANGED,
     "opened_date": InventoryEventType.OPENED_DATE_CHANGED,
     "storage_type": InventoryEventType.STORAGE_CHANGED,
     "quantity": InventoryEventType.QUANTITY_CHANGED,
@@ -34,6 +35,7 @@ FIELD_EVENT_TYPES: dict[str, InventoryEventType] = {
 SNAPSHOT_FIELDS = (
     "custom_name",
     "expiry_date",
+    "expiry_source",
     "purchase_date",
     "opened_date",
     "storage_type",

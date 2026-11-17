@@ -7,6 +7,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-ocr/
 venv/
 *.egg-info/
 .pytest_cache/
@@ -25,3 +26,6 @@ mobile/.claude/
 .vscode/
 .idea/
 .DS_Store
+
+# downloaded datasets
+/data/

@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.enums import InventoryStatus, StorageType, UserActionType
+from app.core.enums import ExpirySource, InventoryStatus, StorageType, UserActionType
 
 NAME_MAX_LENGTH = 100
 
@@ -21,6 +21,8 @@ NAME_MAX_LENGTH = 100
 class InventoryItemCreate(BaseModel):
     custom_name: str = Field(min_length=1, max_length=NAME_MAX_LENGTH)
     expiry_date: date | None = None
+    # 앱이 OCR 후보를 사용자 확인 뒤 그대로 저장하면 OCR, 손으로 입력·수정하면 MANUAL
+    expiry_source: ExpirySource = ExpirySource.MANUAL
     # 아래는 접힌 영역의 선택 입력
     purchase_date: date | None = None
     opened_date: date | None = None
@@ -65,6 +67,7 @@ class InventoryItemResponse(BaseModel):
     id: uuid.UUID
     custom_name: str
     expiry_date: date | None
+    expiry_source: ExpirySource
     purchase_date: date | None
     opened_date: date | None
     storage_type: StorageType | None

@@ -158,3 +158,32 @@ def test_other_users_item_is_invisible_and_untouchable(api: TestClient) -> None:
 def test_inventory_requires_login(api: TestClient) -> None:
     assert api.get("/inventory").status_code == 401
     assert api.post("/inventory", json={"custom_name": "x"}).status_code == 401
+
+
+def test_expiry_source_defaults_to_manual_and_accepts_ocr(api: TestClient) -> None:
+    headers = signup_headers(api)
+
+    manual = create(api, headers, custom_name="두부", expiry_date="2026-10-01")
+    ocr = create(api, headers, custom_name="우유", expiry_date="2026-10-05", expiry_source="OCR")
+
+    assert manual["expiry_source"] == "MANUAL"
+    assert ocr["expiry_source"] == "OCR"
+
+
+def test_editing_expiry_marks_it_manual(api: TestClient, db: Session) -> None:
+    headers = signup_headers(api)
+    item = create(api, headers, custom_name="우유", expiry_date="2026-10-05", expiry_source="OCR")
+
+    updated = api.patch(
+        f"/inventory/{item['id']}", json={"expiry_date": "2026-10-06"}, headers=headers
+    ).json()
+
+    assert updated["expiry_source"] == "MANUAL"
+    event = db.scalar(
+        sa.select(InventoryItemEvent).where(
+            InventoryItemEvent.inventory_item_id == item["id"],
+            InventoryItemEvent.event_type == InventoryEventType.EXPIRY_CHANGED,
+        )
+    )
+    assert event is not None
+    assert event.previous_values == {"expiry_date": "2026-10-05", "expiry_source": "OCR"}

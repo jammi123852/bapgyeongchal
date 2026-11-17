@@ -9,7 +9,7 @@ from decimal import Decimal
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.enums import InventoryStatus, StorageType
+from app.core.enums import ExpirySource, InventoryStatus, StorageType
 from app.db.base import Base, SoftDeleteMixin, TimestampMixin, enum_column, uuid_pk
 
 
@@ -39,6 +39,11 @@ class InventoryItem(TimestampMixin, SoftDeleteMixin, Base):
     # 시각이 아니라 '날짜'다. timestamptz 로 두면 23:59 경계에서 하루가 밀린다.
     # 바코드 조회 결과를 이 컬럼에 직접 대입하지 않는다 (개별 포장의 실제 인쇄일만 저장).
     expiry_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
+    expiry_source: Mapped[ExpirySource] = mapped_column(
+        enum_column(ExpirySource, "expiry_source"),
+        nullable=False,
+        server_default=ExpirySource.MANUAL.value,
+    )
     purchase_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
     opened_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
 

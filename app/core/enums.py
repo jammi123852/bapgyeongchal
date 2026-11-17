@@ -52,6 +52,16 @@ class Actor(str, Enum):
     SYSTEM = "SYSTEM"
 
 
+class ExpirySource(str, Enum):
+    """소비기한 값의 출처. OCR 값도 사용자가 확인한 뒤에만 저장된다.
+
+    OCR 정확도와 사용자 수정률을 나중에 측정하기 위해 구분해 둔다.
+    """
+
+    MANUAL = "MANUAL"
+    OCR = "OCR"
+
+
 class InventoryEventType(str, Enum):
     """InventoryItem 변경 이력 유형."""
 

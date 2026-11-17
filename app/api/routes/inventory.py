@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.core.enums import InventoryStatus
+from app.core.enums import ExpirySource, InventoryStatus
 from app.db.session import get_db
 from app.models import InventoryItem, User
 from app.schemas.inventory import (
@@ -71,6 +71,9 @@ def update_item(
     changes = body.model_dump(exclude_unset=True)
     if "custom_name" in changes and changes["custom_name"] is None:
         raise HTTPException(status_code=422, detail="이름은 비울 수 없습니다.")
+    if "expiry_date" in changes:
+        # 수정 화면에서 날짜를 바꾸면 사람이 정한 값이다 (OCR 정확도 측정용 구분).
+        changes["expiry_source"] = ExpirySource.MANUAL
     inventory_service.apply_changes(db, item, changes)
     db.commit()
     db.refresh(item)
