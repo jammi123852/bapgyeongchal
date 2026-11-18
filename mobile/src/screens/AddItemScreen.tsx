@@ -1,6 +1,8 @@
 // 음식 등록. 필수는 이름 하나, 소비기한은 버튼 한 번으로. 나머지는 '더 입력하기' 안에 접는다.
+import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-import { ApiError, StorageType, api } from '../api';
+import { ApiError, OcrResult, StorageType, api } from '../api';
 import { daysFromToday, isValidIsoDate } from '../dates';
 import { colors, radius, space } from '../theme';
 
@@ -43,11 +45,67 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
   const [storage, setStorage] = useState<StorageType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 사진에서 읽은 날짜. 사용자가 날짜를 바꾸면 null 로 돌아가 손입력(MANUAL)으로 저장된다.
+  const [ocrDate, setOcrDate] = useState<string | null>(null);
+  const [ocrNote, setOcrNote] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
 
   function pickPreset(offset: number) {
     const value = daysFromToday(offset);
     setExpiry(value);
     setExpiryText(value);
+    setOcrDate(null);
+    setOcrNote(null);
+  }
+
+  function applyOcr(result: OcrResult) {
+    const best = result.best;
+    if (!best) {
+      setOcrNote('사진에서 날짜를 찾지 못했어요. 직접 입력해 주세요.');
+      return;
+    }
+    setExpiry(null);
+    setExpiryText(best.date);
+    setOcrDate(best.date);
+    const notes = [`사진에서 '${best.raw}'을(를) 읽었어요. 맞는지 확인해 주세요.`];
+    if (best.precision === 'month') notes.push('월까지만 적혀 있어서 그 달 마지막 날로 넣었어요.');
+    if (best.ambiguous) notes.push('일과 월 순서가 헷갈리는 표기예요. 꼭 확인해 주세요.');
+    setOcrNote(notes.join(' '));
+  }
+
+  async function readFromPhoto(source: 'camera' | 'library') {
+    setError(null);
+    setOcrNote(null);
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError(source === 'camera' ? '카메라 권한이 필요해요.' : '사진 접근 권한이 필요해요.');
+      return;
+    }
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.8 };
+    const picked =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+    if (picked.canceled || !picked.assets?.[0]) return;
+    const asset = picked.assets[0];
+    setReading(true);
+    try {
+      applyOcr(
+        await api.readExpiry(token, {
+          uri: asset.uri,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName,
+          file: asset.file ?? null,
+        }),
+      );
+    } catch (e) {
+      setOcrNote(e instanceof ApiError ? e.message : '사진을 읽지 못했어요. 직접 입력해 주세요.');
+    } finally {
+      setReading(false);
+    }
   }
 
   async function save() {
@@ -71,6 +129,8 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
       await api.createItem(token, {
         custom_name: name.trim(),
         expiry_date: expiryDate,
+        // 사진에서 읽은 날짜를 그대로 저장할 때만 OCR, 한 글자라도 바꿨으면 손입력
+        expiry_source: ocrDate !== null && expiryDate === ocrDate ? 'OCR' : 'MANUAL',
         opened_date: openedToday ? daysFromToday(0) : null,
         storage_type: storage,
       });
@@ -127,9 +187,21 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
             onPress={() => {
               setExpiry(null);
               setExpiryText('');
+              setOcrDate(null);
+              setOcrNote(null);
             }}
           />
         </View>
+        <View style={styles.row}>
+          <Option label="사진 찍어 읽기" selected={false} onPress={() => readFromPhoto('camera')} />
+          <Option label="앨범에서 읽기" selected={false} onPress={() => readFromPhoto('library')} />
+          {reading && <ActivityIndicator color={colors.primary} />}
+        </View>
+        {ocrNote && (
+          <Text style={styles.ocrNote} accessibilityLiveRegion="polite">
+            {ocrNote}
+          </Text>
+        )}
         <TextInput
           style={styles.input}
           placeholder="직접 입력 (2026-10-01)"
@@ -138,6 +210,7 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
           onChangeText={(t) => {
             setExpiryText(t);
             setExpiry(null);
+            if (t !== ocrDate) setOcrNote(null);
           }}
           maxLength={10}
         />
@@ -234,6 +307,13 @@ const styles = StyleSheet.create({
   more: { color: colors.primary, fontSize: 14, fontWeight: '600', paddingVertical: space.md },
   moreBox: { gap: space.sm },
   error: { color: colors.danger, fontSize: 14, marginTop: space.sm },
+  ocrNote: {
+    fontSize: 13,
+    color: colors.primary,
+    backgroundColor: colors.soft,
+    borderRadius: radius.sm,
+    padding: space.md,
+  },
   save: {
     minHeight: 52,
     borderRadius: radius.sm,

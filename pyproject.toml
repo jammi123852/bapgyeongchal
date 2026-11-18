@@ -16,6 +16,9 @@ dependencies = [
     "bcrypt>=4.2",
     "pyjwt>=2.9",
     "email-validator>=2.2",
+    # OCR 서버 호출 + 사진 업로드
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

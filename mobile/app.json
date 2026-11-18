@@ -22,7 +22,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "포장지의 소비기한을 사진으로 읽기 위해 카메라를 사용해요.",
+          "photosPermission": "찍어둔 포장지 사진에서 소비기한을 읽기 위해 사진에 접근해요."
+        }
+      ]
     ]
   }
 }

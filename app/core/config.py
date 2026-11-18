@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # Eat-First 기본 알고리즘 (baseline0 | baseline1). algorithm_version 으로 행마다 기록된다.
     eat_first_algorithm: str = "baseline1"
 
+    # OCR 서버 (ocr_service/, 별도 venv). 사진 → 소비기한 후보.
+    ocr_service_url: str = "http://127.0.0.1:8001"
+    ocr_timeout_seconds: float = 60.0
+
     # 브라우저(Expo web) 개발용 허용 origin. 네이티브 앱은 CORS 와 무관하다.
     cors_origins: list[str] = ["http://localhost:8081", "http://127.0.0.1:8081"]
 

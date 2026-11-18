@@ -37,9 +37,33 @@ export interface EatFirstBatch {
   entries: EatFirstEntry[];
 }
 
+export interface OcrCandidate {
+  date: string;
+  precision: 'day' | 'month';
+  raw: string;
+  near_keyword: boolean;
+  ambiguous: boolean;
+}
+
+export interface OcrResult {
+  best: OcrCandidate | null;
+  candidates: OcrCandidate[];
+  lines: string[];
+  seconds: number;
+}
+
+// 사진 1장. 폰에서는 uri, 웹에서는 File 객체를 쓴다.
+export interface PhotoInput {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  file?: Blob | null;
+}
+
 export interface NewItem {
   custom_name: string;
   expiry_date?: string | null;
+  expiry_source?: 'MANUAL' | 'OCR';
   opened_date?: string | null;
   storage_type?: StorageType | null;
 }
@@ -65,12 +89,14 @@ function errorMessage(body: unknown, status: number): string {
 
 async function request<T>(path: string, init: RequestInit & { token?: string | null } = {}): Promise<T> {
   const { token, headers, ...rest } = init;
+  // FormData(사진 업로드)는 브라우저/RN 이 boundary 포함 Content-Type 을 직접 붙인다.
+  const isForm = typeof FormData !== 'undefined' && rest.body instanceof FormData;
   let response: Response;
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...rest,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isForm ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
@@ -116,6 +142,18 @@ export const api = {
     }),
   eatFirst: (token: string, limit = 3) =>
     request<EatFirstBatch>(`/eat-first?limit=${limit}`, { method: 'POST', token }),
+  readExpiry: (token: string, photo: PhotoInput) => {
+    const form = new FormData();
+    const type = photo.mimeType ?? 'image/jpeg';
+    const name = photo.fileName ?? 'photo.jpg';
+    if (photo.file) {
+      form.append('image', photo.file, name);
+    } else {
+      // React Native 의 FormData 파일 표기
+      form.append('image', { uri: photo.uri, name, type } as unknown as Blob);
+    }
+    return request<OcrResult>('/ocr/expiry', { method: 'POST', body: form, token });
+  },
   markShown: (token: string, batchId: string) =>
     request<void>(`/eat-first/${batchId}/shown`, { method: 'POST', token }),
 };
