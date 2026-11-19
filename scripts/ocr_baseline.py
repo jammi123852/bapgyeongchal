@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.services.expiry_parse import MONTHS, find_dates, pick_expiry  # noqa: E402
 
-DATA = ROOT / "data/expdate/Products-Real/evaluation"
+DATA_ROOT = ROOT / "data/expdate/Products-Real"
 FIELDS = [
     "image",
     "gt_date",
@@ -58,8 +58,27 @@ FIELDS = [
 ]
 
 
+def ground_truth_train(entry: dict) -> tuple[list[date], str, str]:
+    """train 분할: 'date' 박스(소비기한)에 dmy 라벨이 없어 문자열을 규칙으로 해석한다.
+
+    한 사진에 소비기한 박스가 2개 이상일 수 있으므로 정답은 날짜 목록이다.
+    일/월 해석이 애매한 표기는 precision 에 'ambiguous' 를 붙인다 (분석 때 따로 본다).
+    """
+    dates: list[date] = []
+    raws: list[str] = []
+    ambiguous = False
+    for ann in entry["ann"]:
+        if ann["cls"] != "date":
+            continue
+        raws.append(ann.get("transcription", ""))
+        for c in find_dates(ann.get("transcription", "")):
+            dates.append(c.value)
+            ambiguous = ambiguous or c.ambiguous
+    return dates, ("ambiguous" if ambiguous else "parsed"), " ; ".join(raws)
+
+
 def ground_truth(entry: dict) -> tuple[date | None, str, str]:
-    """exp 박스의 day/month/year 라벨 → 날짜. 해석 불가면 None."""
+    """evaluation 분할: exp 박스의 day/month/year 라벨 → 날짜. 해석 불가면 None."""
     for ann in entry["ann"]:
         if ann["cls"] != "exp":
             continue
@@ -89,6 +108,8 @@ def load_done(path: Path) -> set[str]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-name", default="smoke")
+    # 규칙 개선(오류 분석)은 train 으로만 한다. evaluation 은 최종 점수용.
+    parser.add_argument("--split", choices=["evaluation", "train"], default="evaluation")
     parser.add_argument("--limit", type=int, default=0, help="0 이면 전체")
     parser.add_argument("--threads", type=int, default=4)
     # paddlepaddle 3.3.1 CPU 에서 oneDNN 이 PP-OCRv5 를 실행하지 못한다(NotImplementedError). 기본 끔.
@@ -101,7 +122,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     pred_path = out_dir / "predictions.csv"
 
-    annotations = json.loads((DATA / "annotations.json").read_text(encoding="utf-8"))
+    data = DATA_ROOT / args.split
+    annotations = json.loads((data / "annotations.json").read_text(encoding="utf-8"))
     names = sorted(annotations)
     if args.limit:
         names = names[: args.limit]
@@ -128,12 +150,21 @@ def main() -> None:
         if new_file:
             writer.writeheader()
         for i, name in enumerate(todo, start=1):
-            gt, gt_precision, gt_raw = ground_truth(annotations[name])
+            if args.split == "train":
+                gt_list, gt_precision, gt_raw = ground_truth_train(annotations[name])
+            else:
+                gt_one, gt_precision, gt_raw = ground_truth(annotations[name])
+                gt_list = [gt_one] if gt_one else []
             row = {k: "" for k in FIELDS}
-            row.update(image=name, gt_date=gt or "", gt_precision=gt_precision, gt_raw=gt_raw)
+            row.update(
+                image=name,
+                gt_date=";".join(d.isoformat() for d in gt_list),
+                gt_precision=gt_precision,
+                gt_raw=gt_raw,
+            )
             started = time.perf_counter()
             try:
-                result = ocr.predict(str(DATA / "images" / name))
+                result = ocr.predict(str(data / "images" / name))
                 lines = [t for page in result for t in page["rec_texts"]]
                 candidates = [c for line in lines for c in find_dates(line)] or find_dates(" ".join(lines))
                 pred = pick_expiry(lines)
@@ -143,10 +174,10 @@ def main() -> None:
                     pred_raw=pred.raw if pred else "",
                     pred_near_keyword=int(pred.near_keyword) if pred else "",
                     pred_ambiguous=int(pred.ambiguous) if pred else "",
-                    exact=int(pred is not None and gt is not None and pred.value == gt),
-                    any_cand=int(gt is not None and any(c.value == gt for c in candidates)),
+                    exact=int(pred is not None and pred.value in gt_list),
+                    any_cand=int(any(c.value in gt_list for c in candidates)),
                     n_cand=len(candidates),
-                    ocr_text=" | ".join(lines)[:500],
+                    ocr_text=" | ".join(lines),  # 자르지 않는다 (재채점에 전체가 필요)
                 )
             except Exception as exc:  # 한 장 실패로 전체를 멈추지 않는다. error 열에 남긴다.
                 row["error"] = f"{type(exc).__name__}: {exc}"[:300]
@@ -172,6 +203,7 @@ def main() -> None:
 
     summary = {
         "run_name": args.run_name,
+        "split": args.split,
         "images_total": len(names),
         "rows": len(rows),
         "scored": n,

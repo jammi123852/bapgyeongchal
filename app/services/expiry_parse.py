@@ -65,7 +65,12 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("DMY", re.compile(rf"(?<!\d)(?P<d>\d{{1,2}}){_SEP}(?P<m>\d{{1,2}}){_SEP}(?P<y>\d{{4}})(?!\d)")),
     ("D MON Y", re.compile(r"(?<![A-Z\d])(?P<d>\d{1,2})\s*(?P<mon>[A-Z]{3,4})\s*(?P<y>\d{4}|\d{2})(?!\d)")),
     ("MON Y", re.compile(r"(?<![A-Z])(?P<mon>[A-Z]{3,4})[\s./\-]*(?P<y>\d{4})(?!\d)")),
+    # train 분석에서 찾은 OCR 변형: 202107.15 (점 누락) / 023.02.19 (연도 첫 자리 누락)
+    ("YYYYMM.DD", re.compile(r"(?<!\d)(?P<y>20\d{2})(?P<m>\d{2})[./\-](?P<d>\d{2})(?!\d)")),
+    ("0YY.MM.DD", re.compile(r"(?<![\d.])0(?P<yy>\d{2})\.(?P<m>\d{2})\.(?P<d>\d{2})(?!\d)")),
     ("AA.BB.CC", re.compile(rf"(?<!\d)(?P<a>\d{{2}}){_SEP}(?P<b>\d{{2}}){_SEP}(?P<c>\d{{2}})(?!\d)")),
+    # 붙여 쓴 20210702. 로트번호 오인을 막기 위해 정확히 8자리 + 20xx + 실제 존재하는 날짜만
+    ("YYYYMMDD", re.compile(r"(?<!\d)(?P<y>20\d{2})(?P<m>\d{2})(?P<d>\d{2})(?!\d)")),
     # 월 뒤에 숫자가 더 이어지면(잘못된 연월일의 일부) 연-월 로 보지 않는다.
     ("YM", re.compile(r"(?<!\d)(?P<y>\d{4})\s*[./\-]\s*(?P<m>\d{1,2})(?!\d)(?!\s*[./\-]\s*\d)")),
     ("MY", re.compile(r"(?<!\d)(?<!\d[./\-])(?P<m>\d{1,2})\s*[./\-]\s*(?P<y>\d{4})(?!\d)")),
@@ -103,6 +108,11 @@ def _two_digit_year(yy: int) -> int:
 def normalize_text(text: str) -> str:
     """OCR 에서 흔한 혼동을 정리한다. 숫자 사이의 O→0, I/l→1, 쉼표→점, 콜론 제거."""
     t = text.upper().replace(",", ".").replace("·", ".")
+    # 날짜 바로 뒤 '까지' 가 '1XI' / '7XI' 로 읽히는 경우 (train 분석: 2020.12.091XI)
+    t = re.sub(r"(?<=\d\d)[17]X[I1L|]", " 까지", t)
+    # 월 이름 안의 O 를 0 으로 읽은 경우 (train 분석: 29N0V2021)
+    t = t.replace("N0V", "NOV")
+    t = re.sub(r"0CT(?=\s*\d)", "OCT", t)
     t = re.sub(r"(?<=\d)[OQ](?=\d)|(?<=\d)[OQ](?=[./\-])|(?<=[./\-])[OQ](?=\d)", "0", t)
     t = re.sub(r"(?<=\d)[IL|](?=\d)|(?<=[./\-])[IL|](?=\d)|(?<=\d)[IL|](?=[./\-])", "1", t)
     return t
@@ -121,8 +131,10 @@ def _from_match(name: str, m: re.Match[str], text: str) -> list[DateCandidate]:
     def cand(value: date | None, precision: str = "day", ambiguous: bool = False) -> list[DateCandidate]:
         return [] if value is None else [DateCandidate(value, precision, raw, name, near, ambiguous)]
 
-    if name in ("Y년M월D일", "YMD"):
+    if name in ("Y년M월D일", "YMD", "YYYYMM.DD", "YYYYMMDD"):
         return cand(_valid(int(g["y"]), int(g["m"]), int(g["d"])))
+    if name == "0YY.MM.DD":
+        return cand(_valid(_two_digit_year(int(g["yy"])), int(g["m"]), int(g["d"])))
     if name == "DMY":
         d, mth, y = int(g["d"]), int(g["m"]), int(g["y"])
         dmy = _valid(y, mth, d)
@@ -178,8 +190,13 @@ def pick_expiry(lines: list[str]) -> DateCandidate | None:
     candidates: list[DateCandidate] = []
     for line in lines:
         candidates.extend(find_dates(line))
+    if not any(c.precision == "day" for c in candidates):
+        # 줄 단위로 끊긴 날짜(예: '2021.06.' / '.28.')를 위해 이웃한 두 줄을 붙여 본다.
+        # 한 줄에서 이미 일 단위 날짜를 찾았으면 하지 않는다 (엉뚱한 조합 방지).
+        for first, second in zip(lines, lines[1:]):
+            joined = re.sub(r"([./\-])\s*[./\-]", r"\1", f"{first}{second}")
+            candidates.extend(find_dates(joined))
     if not candidates:
-        # 줄 단위로 끊긴 날짜(예: '2026.' / '10.05')를 위해 이어 붙여 한 번 더 본다.
         candidates = find_dates(" ".join(lines))
     if not candidates:
         return None

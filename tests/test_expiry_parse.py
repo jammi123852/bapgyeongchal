@@ -87,3 +87,39 @@ def test_real_example_from_expdate() -> None:
 
 def test_date_split_across_lines() -> None:
     assert pick_expiry(["EXP:2022.", "04.04"]).value == date(2022, 4, 4)
+
+
+# --- train 분할 오류 분석(2026-09-29)에서 찾은 OCR 변형 ---
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("BESTBY 20210702", date(2021, 7, 2)),  # 붙여 쓴 날짜
+        ("2020.12.091XI", date(2020, 12, 9)),  # '까지' → '1XI'
+        ("023.02.197XI", date(2023, 2, 19)),  # 연도 첫 자리 누락 + '까지' → '7XI'
+        ("202107.15J", date(2021, 7, 15)),  # 점 누락
+        ("29N0V2021 PV 03:26", date(2021, 11, 29)),  # NOV 의 O → 0
+    ],
+)
+def test_ocr_variants(text: str, expected: date) -> None:
+    assert pick_expiry([text]).value == expected
+
+
+def test_kkaji_misread_counts_as_keyword() -> None:
+    (c,) = find_dates("2020.12.091XI")
+    assert c.near_keyword
+
+
+def test_eight_digit_lot_numbers_are_not_dates() -> None:
+    assert find_dates("20123521") == []  # 35월
+    assert find_dates("8801391102715") == []  # 바코드
+    assert find_dates("20083617") == []
+
+
+def test_date_split_into_two_lines_with_dots() -> None:
+    assert pick_expiry(["2021.06.", ".28.", "F", "10:33"]).value == date(2021, 6, 28)
+
+
+def test_line_join_not_used_when_a_full_date_exists() -> None:
+    assert pick_expiry(["2021.06.28", "2021.06.", ".30"]).value == date(2021, 6, 28)
