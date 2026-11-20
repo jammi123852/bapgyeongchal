@@ -8,6 +8,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .venv-ocr/
+.venv-det/
+third_party/
 venv/
 *.egg-info/
 .pytest_cache/
@@ -29,3 +31,4 @@ mobile/.claude/
 
 # downloaded datasets
 /data/
+/weights/
