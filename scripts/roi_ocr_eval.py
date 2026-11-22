@@ -66,6 +66,13 @@ def preprocess(crop_img: np.ndarray, variant: str) -> np.ndarray:
         lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB)
         lab[:, :, 0] = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(lab[:, :, 0])
         out = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    if variant == "gblur":
+        # 잉크젯 점 글씨의 점 사이를 흐려서 이어지게 한다
+        return cv2.GaussianBlur(out, (5, 5), 0)
+    if variant == "binarize":
+        gray = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+        binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 10)
+        return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
     if "close" in variant:
         # 잉크젯 점선 글씨: 어두운 점들을 이어 붙인다 (어두운 글씨 기준 → erode = 어두운 영역 확장)
         out = cv2.erode(out, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)), iterations=1)
@@ -76,7 +83,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--boxes", required=True)
     parser.add_argument("--split", choices=["val", "eval"], required=True)
-    parser.add_argument("--variant", default="raw", choices=["raw", "up2", "up2_clahe", "up2_clahe_close"])
+    parser.add_argument(
+        "--variant", default="raw",
+        choices=["raw", "up2", "up2_clahe", "up2_clahe_close", "gblur", "binarize"],
+    )
     parser.add_argument("--min-score", type=float, default=0.1)
     parser.add_argument("--max-crops", type=int, default=3)
     parser.add_argument("--pad", type=float, default=0.15)
@@ -84,6 +94,11 @@ def main() -> None:
     parser.add_argument("--rotate", action="store_true")
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--threads", type=int, default=2)
+    # 인식 모델을 명시한다. 검출 모델만 지정하면 PaddleOCR 이 lang 을 무시하고
+    # PP-OCRv6_medium_rec 를 쓴다 (2026-09-29 로그로 확인). 지금까지의 기준선은 모두 이 모델.
+    parser.add_argument("--rec-model", default="PP-OCRv6_medium_rec")
+    # 크롭 안에서 글자 찾기(det)를 다시 하지 않고 인식(rec)만 바로 한다.
+    parser.add_argument("--rec-only", action="store_true")
     args = parser.parse_args()
 
     split_src, src_dir = SRC[args.split]
@@ -102,15 +117,25 @@ def main() -> None:
     todo = [n for n in names if n not in done]
     print(f"total={len(names)} done={len(done)} todo={len(todo)}", flush=True)
 
-    from paddleocr import PaddleOCR
+    from paddleocr import PaddleOCR, TextRecognition
 
-    ocr = PaddleOCR(lang="korean", device="cpu", cpu_threads=args.threads, enable_mkldnn=False,
+    ocr = PaddleOCR(device="cpu", cpu_threads=args.threads, enable_mkldnn=False,
                     text_detection_model_name="PP-OCRv5_mobile_det",
+                    text_recognition_model_name=args.rec_model,
                     use_doc_orientation_classify=False, use_doc_unwarping=False,
                     use_textline_orientation=False)
+    recognizer = (
+        TextRecognition(model_name=args.rec_model, device="cpu", enable_mkldnn=False)
+        if args.rec_only else None
+    )
 
-    def read(img: np.ndarray) -> list[str]:
+    def read_full(img: np.ndarray) -> list[str]:
         return [t for page in ocr.predict(img) for t in page["rec_texts"]]
+
+    def read_crop(img: np.ndarray) -> list[str]:
+        if recognizer is None:
+            return read_full(img)
+        return [r["rec_text"] for r in recognizer.predict(img)]
 
     new_file = not pred_path.exists()
     with pred_path.open("a", newline="", encoding="utf-8") as f:
@@ -132,20 +157,20 @@ def main() -> None:
                 row.update(n_boxes=len(kept), top_score=kept[0][4] if kept else "")
                 lines: list[str] = []
                 for b in kept:
-                    lines.extend(read(preprocess(crop(image, b, args.pad), args.variant)))
+                    lines.extend(read_crop(preprocess(crop(image, b, args.pad), args.variant)))
                 stage = "roi"
                 pred = pick_expiry(lines) if lines else None
                 if pred is None and args.rotate and kept:
                     for code in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE):
                         rot_lines = []
                         for b in kept:
-                            rot_lines.extend(read(cv2.rotate(preprocess(crop(image, b, args.pad), args.variant), code)))
+                            rot_lines.extend(read_crop(cv2.rotate(preprocess(crop(image, b, args.pad), args.variant), code)))
                         pred = pick_expiry(rot_lines)
                         if pred is not None:
                             lines, stage = rot_lines, "roi_rotate"
                             break
                 if pred is None and not args.no_fallback:
-                    lines = read(image)
+                    lines = read_full(image)
                     pred, stage = pick_expiry(lines), "fallback_full"
                 candidates = [c for line in lines for c in find_dates(line)]
                 row.update(
@@ -174,6 +199,7 @@ def main() -> None:
         stages[r["stage"]] = stages.get(r["stage"], 0) + 1
     summary = {
         "run_name": args.run_name, "split": args.split, "variant": args.variant,
+        "rec_model": args.rec_model, "rec_only": args.rec_only, "pad": args.pad,
         "fallback": not args.no_fallback, "rotate": args.rotate,
         "images": len(rows), "scored": n, "errors": sum(1 for r in rows if r["error"]),
         "exact": round(sum(int(r["exact"] or 0) for r in scored) / n, 4) if n else 0.0,
