@@ -39,6 +39,9 @@ class Exp(BaseExp):
         self.eval_interval = int(os.environ.get("ROI_EVAL_INTERVAL", "5"))
         self.print_interval = 10
         self.data_num_workers = int(os.environ.get("ROI_WORKERS", "2"))
+        # 추론 입력 크기 (학습은 640). 작은 날짜 글씨용으로 크게 넣어 비교할 때만 바꾼다.
+        size = int(os.environ.get("ROI_TEST_SIZE", "640"))
+        self.test_size = (size, size)
 
         # 일반화용 증강. 글자 좌우 반전은 실제 포장에 없어 끈다.
         self.flip_prob = 0.0
