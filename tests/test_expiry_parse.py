@@ -123,3 +123,56 @@ def test_date_split_into_two_lines_with_dots() -> None:
 
 def test_line_join_not_used_when_a_full_date_exists() -> None:
     assert pick_expiry(["2021.06.28", "2021.06.", ".30"]).value == date(2021, 6, 28)
+
+
+# --- 여러 해석 + 말이 되는 날짜 고르기 (2026-09-30) ---
+
+
+@pytest.mark.parametrize(
+    ("text", "expected", "alternative"),
+    [
+        ("04-11-23", date(2023, 11, 4), date(2004, 11, 23)),  # 2004년은 말이 안 됨 → 일/월/연
+        ("11/08/23", date(2023, 8, 11), date(2011, 8, 23)),
+        ("21.12.22", date(2022, 12, 21), date(2021, 12, 22)),  # 둘 다 가능 → 일/월/연 우선, 연/월/일은 대안
+    ],
+)
+def test_two_digit_year_interpretations(text: str, expected: date, alternative: date) -> None:
+    (c,) = find_dates(text)
+    assert c.value == expected
+    assert c.ambiguous
+    assert alternative in c.alternatives
+
+
+def test_korean_yymmdd_wins_when_dmy_is_implausible() -> None:
+    (c,) = find_dates("26.10.05")  # 일/월/연이면 2005년 → 말이 안 됨
+    assert c.value == date(2026, 10, 5)
+
+
+def test_reference_date_decides_plausibility() -> None:
+    today = date(2026, 9, 30)
+    (c,) = find_dates("21.12.30", today)  # 일/월/연 2030-12-21, 연/월/일 2021-12-30 둘 다 창 안
+    assert c.value == date(2030, 12, 21)
+    assert date(2021, 12, 30) in c.alternatives
+
+
+def test_unambiguous_date_has_no_alternatives() -> None:
+    (c,) = find_dates("2026.10.05")
+    assert c.alternatives == () and not c.ambiguous
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("22/MAY/2023", date(2023, 5, 22)),
+        ("11/OCT/2021", date(2021, 10, 11)),
+        ("2021 JUN 12", date(2021, 6, 12)),
+        ("MAY 22 2023", date(2023, 5, 22)),
+        ("15 FEB 22", date(2022, 2, 15)),
+    ],
+)
+def test_month_name_with_separators(text: str, expected: date) -> None:
+    assert pick_expiry([text]).value == expected
+
+
+def test_implausible_date_loses_to_plausible_one() -> None:
+    assert pick_expiry(["1999.01.01", "2026.10.05"]).value == date(2026, 10, 5)

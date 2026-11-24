@@ -13,6 +13,7 @@ import os
 import sys
 import threading
 import time
+from datetime import date
 from pathlib import Path
 
 os.environ.setdefault("OMP_NUM_THREADS", "4")
@@ -31,6 +32,8 @@ MAX_BYTES = 8 * 1024 * 1024
 # 긴 변을 이 크기로 줄인다. 폰 사진(4000px)을 그대로 넣으면 CPU 에서 수십 초 걸린다.
 MAX_SIDE = 1600
 DET_MODEL = os.environ.get("OCR_DET_MODEL", "PP-OCRv5_mobile_det")
+# 명시하지 않으면 PaddleOCR 이 lang 을 무시하고 이 모델을 쓴다. 실험 기준선과 같은 모델로 고정.
+REC_MODEL = os.environ.get("OCR_REC_MODEL", "PP-OCRv6_medium_rec")
 
 app = FastAPI(title="SoloSafe OCR", version="0.1.0")
 
@@ -44,11 +47,11 @@ def get_engine():
         from paddleocr import PaddleOCR
 
         _engine = PaddleOCR(
-            lang="korean",
             device="cpu",
             cpu_threads=int(os.environ.get("OMP_NUM_THREADS", "4")),
             enable_mkldnn=False,  # paddlepaddle 3.3.1 CPU oneDNN 이 PP-OCRv5 에서 실패한다
             text_detection_model_name=DET_MODEL,
+            text_recognition_model_name=REC_MODEL,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
@@ -84,8 +87,10 @@ async def expiry(image: UploadFile = File(...)) -> dict:
         result = get_engine().predict(picture)
     lines = [t for page in result for t in page["rec_texts"]]
 
-    candidates = [c for line in lines for c in find_dates(line)] or find_dates(" ".join(lines))
-    best = pick_expiry(lines)
+    # 기준일 = 오늘. 애매한 표기는 오늘 기준으로 말이 되는 해석을 고르고 나머지는 대안으로 준다.
+    today = date.today()
+    candidates = [c for line in lines for c in find_dates(line, today)] or find_dates(" ".join(lines), today)
+    best = pick_expiry(lines, today)
 
     def as_json(c) -> dict:
         return {
@@ -94,6 +99,7 @@ async def expiry(image: UploadFile = File(...)) -> dict:
             "raw": c.raw,
             "near_keyword": c.near_keyword,
             "ambiguous": c.ambiguous,
+            "alternatives": [d.isoformat() for d in c.alternatives],
         }
 
     return {
@@ -101,5 +107,5 @@ async def expiry(image: UploadFile = File(...)) -> dict:
         "candidates": [as_json(c) for c in candidates],
         "lines": lines,
         "seconds": round(time.perf_counter() - started, 2),
-        "engine": f"PaddleOCR korean {DET_MODEL}",
+        "engine": f"PaddleOCR {DET_MODEL} + {REC_MODEL}",
     }

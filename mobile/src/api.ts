@@ -43,6 +43,7 @@ export interface OcrCandidate {
   raw: string;
   near_keyword: boolean;
   ambiguous: boolean;
+  alternatives: string[]; // 같은 표기를 다르게 읽은 날짜들 (예: 일/월/연 vs 연/월/일)
 }
 
 export interface OcrResult {

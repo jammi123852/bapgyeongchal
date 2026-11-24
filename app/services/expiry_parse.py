@@ -10,8 +10,14 @@ OCR 엔진(별도 venv)과 백엔드 양쪽에서 import 하므로 app 의 다�
 
 지원 형식 (ExpDate 13종 + 한국식):
   2026.10.05 / 2026-10-05 / 2026/10/05 / 2026 10 05 / 2026. 10. 05 / 2026년 10월 5일
-  26.10.05 (한국식 YY.MM.DD) / 05.10.2026 / 05/10/2026 / 05-10-2026 / 05 10 2026 / 05/10/26
-  10.2026 / 10/2026 / 2026.10 / OCT 2026 / 05 OCT 2026
+  26.10.05 / 05.10.2026 / 05/10/2026 / 05-10-2026 / 05 10 2026 / 05/10/26
+  10.2026 / 10/2026 / 2026.10 / OCT 2026 / 05 OCT 2026 / 22/MAY/2023 / 2021 JUN 12 / MAY 22 2023
+
+애매한 표기(여러 순서로 읽히는 것)는 가능한 해석을 모두 만든다 (2026-09-30):
+  - 말이 되는 날짜만 남긴다: 기준일(today)이 있으면 today-3년 ~ today+10년, 없으면 2015~2040년.
+  - 남은 해석의 우선순위: 일/월/연 → 연/월/일 → 월/일/연.
+    근거: ExpDate Date-Real 에서 두 자리 연도 숫자 날짜 77개가 전부 일/월/연 순서였다.
+  - 고르지 않은 해석은 alternatives 로 돌려준다 (앱이 '혹시 이 날짜인가요?' 로 보여준다).
 """
 
 from __future__ import annotations
@@ -63,7 +69,9 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Y년M월D일", re.compile(r"(?P<y>\d{4})\s*년\s*(?P<m>\d{1,2})\s*월\s*(?P<d>\d{1,2})\s*일")),
     ("YMD", re.compile(rf"(?<!\d)(?P<y>\d{{4}}){_SEP}(?P<m>\d{{1,2}}){_SEP}(?P<d>\d{{1,2}})(?!\d)")),
     ("DMY", re.compile(rf"(?<!\d)(?P<d>\d{{1,2}}){_SEP}(?P<m>\d{{1,2}}){_SEP}(?P<y>\d{{4}})(?!\d)")),
-    ("D MON Y", re.compile(r"(?<![A-Z\d])(?P<d>\d{1,2})\s*(?P<mon>[A-Z]{3,4})\s*(?P<y>\d{4}|\d{2})(?!\d)")),
+    ("D MON Y", re.compile(r"(?<![A-Z\d])(?P<d>\d{1,2})[\s./\-]*(?P<mon>[A-Z]{3,4})[\s./\-]*(?P<y>\d{4}|\d{2})(?!\d)")),
+    ("Y MON D", re.compile(r"(?<!\d)(?P<y>\d{4})[\s./\-]*(?P<mon>[A-Z]{3,4})[\s./\-]*(?P<d>\d{1,2})(?!\d)")),
+    ("MON D Y", re.compile(r"(?<![A-Z])(?P<mon>[A-Z]{3,4})[\s./\-]*(?P<d>\d{1,2})[\s.,/\-]+(?P<y>\d{4})(?!\d)")),
     ("MON Y", re.compile(r"(?<![A-Z])(?P<mon>[A-Z]{3,4})[\s./\-]*(?P<y>\d{4})(?!\d)")),
     # train 분석에서 찾은 OCR 변형: 202107.15 (점 누락) / 023.02.19 (연도 첫 자리 누락)
     ("YYYYMM.DD", re.compile(r"(?<!\d)(?P<y>20\d{2})(?P<m>\d{2})[./\-](?P<d>\d{2})(?!\d)")),
@@ -85,6 +93,14 @@ class DateCandidate:
     pattern: str
     near_keyword: bool
     ambiguous: bool  # 일/월 또는 연도 위치 해석이 둘 이상 가능했음
+    plausible: bool = True  # 기준일 창(또는 2015~2040년) 안의 날짜인가
+    alternatives: tuple[date, ...] = ()  # 고르지 않은 다른 해석들
+
+
+def is_plausible(value: date, today: date | None) -> bool:
+    if today is None:
+        return 2015 <= value.year <= 2040
+    return date(today.year - 3, 1, 1) <= value <= date(min(today.year + 10, 9999), 12, 31)
 
 
 def _valid(y: int, m: int, d: int) -> date | None:
@@ -123,13 +139,29 @@ def _has_keyword(text: str, start: int, end: int, window: int = 12) -> bool:
     return any(k in around for k in KEYWORDS)
 
 
-def _from_match(name: str, m: re.Match[str], text: str) -> list[DateCandidate]:
+def _from_match(name: str, m: re.Match[str], text: str, today: date | None = None) -> list[DateCandidate]:
     g = m.groupdict()
     near = _has_keyword(text, m.start(), m.end())
     raw = m.group(0).strip()
 
     def cand(value: date | None, precision: str = "day", ambiguous: bool = False) -> list[DateCandidate]:
-        return [] if value is None else [DateCandidate(value, precision, raw, name, near, ambiguous)]
+        if value is None:
+            return []
+        return [DateCandidate(value, precision, raw, name, near, ambiguous, is_plausible(value, today))]
+
+    def choose(options: list[date | None]) -> list[DateCandidate]:
+        """해석 목록(우선순위 순)에서 말이 되는 첫 해석을 고르고 나머지는 alternatives 로."""
+        unique: list[date] = []
+        for o in options:
+            if o is not None and o not in unique:
+                unique.append(o)
+        if not unique:
+            return []
+        plausible = [o for o in unique if is_plausible(o, today)]
+        primary = (plausible or unique)[0]
+        others = tuple(o for o in unique if o != primary)
+        return [DateCandidate(primary, "day", raw, name, near, bool(others),
+                              is_plausible(primary, today), others)]
 
     if name in ("Y년M월D일", "YMD", "YYYYMM.DD", "YYYYMMDD"):
         return cand(_valid(int(g["y"]), int(g["m"]), int(g["d"])))
@@ -137,11 +169,10 @@ def _from_match(name: str, m: re.Match[str], text: str) -> list[DateCandidate]:
         return cand(_valid(_two_digit_year(int(g["yy"])), int(g["m"]), int(g["d"])))
     if name == "DMY":
         d, mth, y = int(g["d"]), int(g["m"]), int(g["y"])
-        dmy = _valid(y, mth, d)
-        mdy = _valid(y, d, mth)
-        if dmy and mdy and dmy != mdy:
-            return cand(dmy, ambiguous=True)  # 일/월 둘 다 12 이하 → DMY 우선, 확인 필요 표시
-        return cand(dmy or mdy)
+        return choose([_valid(y, mth, d), _valid(y, d, mth)])  # 일/월/연 → 월/일/연
+    if name in ("Y MON D", "MON D Y"):
+        mon = MONTHS.get(g["mon"])
+        return [] if mon is None else cand(_valid(int(g["y"]), mon, int(g["d"])))
     if name == "D MON Y":
         mon = MONTHS.get(g["mon"])
         if mon is None:
@@ -153,11 +184,11 @@ def _from_match(name: str, m: re.Match[str], text: str) -> list[DateCandidate]:
         return [] if mon is None else cand(_month_end(int(g["y"]), mon), "month")
     if name == "AA.BB.CC":
         a, b, c = int(g["a"]), int(g["b"]), int(g["c"])
-        ymd = _valid(_two_digit_year(a), b, c)  # 한국식 26.10.05
-        dmy = _valid(_two_digit_year(c), b, a)  # 유럽식 05.10.26
-        if ymd and dmy and ymd != dmy:
-            return cand(ymd, ambiguous=True)
-        return cand(ymd or dmy)
+        return choose([
+            _valid(_two_digit_year(c), b, a),  # 일/월/연 05.10.26
+            _valid(_two_digit_year(a), b, c),  # 연/월/일 26.10.05
+            _valid(_two_digit_year(c), a, b),  # 월/일/연 10.05.26
+        ])
     if name == "YM":
         return cand(_month_end(int(g["y"]), int(g["m"])), "month")
     if name == "MY":
@@ -165,7 +196,7 @@ def _from_match(name: str, m: re.Match[str], text: str) -> list[DateCandidate]:
     return []
 
 
-def find_dates(text: str) -> list[DateCandidate]:
+def find_dates(text: str, today: date | None = None) -> list[DateCandidate]:
     """텍스트 안의 모든 날짜 후보. 이미 더 구체적인 패턴이 차지한 구간은 다시 쓰지 않는다."""
     t = normalize_text(text)
     taken: list[tuple[int, int]] = []
@@ -174,14 +205,14 @@ def find_dates(text: str) -> list[DateCandidate]:
         for m in pattern.finditer(t):
             if any(m.start() < e and s < m.end() for s, e in taken):
                 continue
-            candidates = _from_match(name, m, t)
+            candidates = _from_match(name, m, t, today)
             if candidates:
                 taken.append((m.start(), m.end()))
                 found.extend(candidates)
     return found
 
 
-def pick_expiry(lines: list[str]) -> DateCandidate | None:
+def pick_expiry(lines: list[str], today: date | None = None) -> DateCandidate | None:
     """OCR 줄 목록에서 소비기한 1개를 고른다.
 
     한 줄 안의 키워드뿐 아니라 줄 전체를 이어 붙인 문맥도 본다
@@ -189,16 +220,16 @@ def pick_expiry(lines: list[str]) -> DateCandidate | None:
     """
     candidates: list[DateCandidate] = []
     for line in lines:
-        candidates.extend(find_dates(line))
+        candidates.extend(find_dates(line, today))
     if not any(c.precision == "day" for c in candidates):
         # 줄 단위로 끊긴 날짜(예: '2021.06.' / '.28.')를 위해 이웃한 두 줄을 붙여 본다.
         # 한 줄에서 이미 일 단위 날짜를 찾았으면 하지 않는다 (엉뚱한 조합 방지).
         for first, second in zip(lines, lines[1:]):
             joined = re.sub(r"([./\-])\s*[./\-]", r"\1", f"{first}{second}")
-            candidates.extend(find_dates(joined))
+            candidates.extend(find_dates(joined, today))
     if not candidates:
-        candidates = find_dates(" ".join(lines))
+        candidates = find_dates(" ".join(lines), today)
     if not candidates:
         return None
-    # 1) 키워드 근처 2) 일 단위 정밀도 3) 가장 늦은 날짜
-    return max(candidates, key=lambda c: (c.near_keyword, c.precision == "day", c.value))
+    # 1) 키워드 근처 2) 말이 되는 날짜 3) 일 단위 정밀도 4) 가장 늦은 날짜
+    return max(candidates, key=lambda c: (c.near_keyword, c.plausible, c.precision == "day", c.value))

@@ -49,6 +49,7 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
   const [ocrDate, setOcrDate] = useState<string | null>(null);
   const [ocrNote, setOcrNote] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  const [alternatives, setAlternatives] = useState<string[]>([]);
 
   function pickPreset(offset: number) {
     const value = daysFromToday(offset);
@@ -56,6 +57,7 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
     setExpiryText(value);
     setOcrDate(null);
     setOcrNote(null);
+    setAlternatives([]);
   }
 
   function applyOcr(result: OcrResult) {
@@ -67,9 +69,10 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
     setExpiry(null);
     setExpiryText(best.date);
     setOcrDate(best.date);
+    setAlternatives(best.alternatives ?? []);
     const notes = [`사진에서 '${best.raw}'을(를) 읽었어요. 맞는지 확인해 주세요.`];
     if (best.precision === 'month') notes.push('월까지만 적혀 있어서 그 달 마지막 날로 넣었어요.');
-    if (best.ambiguous) notes.push('일과 월 순서가 헷갈리는 표기예요. 꼭 확인해 주세요.');
+    if (best.alternatives?.length) notes.push('순서가 여러 가지로 읽히는 표기예요. 아래에서 맞는 날짜를 골라 주세요.');
     setOcrNote(notes.join(' '));
   }
 
@@ -201,6 +204,22 @@ export function AddItemScreen({ token, onDone, onCancel }: Props) {
           <Text style={styles.ocrNote} accessibilityLiveRegion="polite">
             {ocrNote}
           </Text>
+        )}
+        {ocrDate !== null && alternatives.length > 0 && (
+          <View style={styles.row}>
+            {[ocrDate, ...alternatives].map((d) => (
+              <Option
+                key={d}
+                label={d}
+                selected={expiryText === d}
+                onPress={() => {
+                  // 대안 중 하나를 골라도 사진에서 읽은 값이므로 OCR 로 기록한다
+                  setExpiryText(d);
+                  setOcrDate(d);
+                }}
+              />
+            ))}
+          </View>
         )}
         <TextInput
           style={styles.input}
