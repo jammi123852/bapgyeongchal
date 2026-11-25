@@ -4,7 +4,7 @@
 
 **현재: v0.1 MUST 6개 구현 완료 (백엔드 Step 1~8 + 모바일 앱 `mobile/`).**
 Step 9(2~3명 2주 실사용 검증)는 사람이 진행해야 하는 단계라 아직 하지 않았습니다.
-바코드 / OCR / 레시피 / 알림 / ML / 회수제품 / 건강 기능은 **구현되어 있지 않습니다.**
+바코드 / 레시피 / 알림 / 회수제품 / 건강 기능은 **구현되어 있지 않습니다.** (사진 → 소비기한 OCR 은 아래 6-1)
 
 | 기능 | API |
 |---|---|
@@ -125,6 +125,21 @@ DB 없이 생성될 SQL 만 확인하려면(실행 검증 완료):
 curl http://127.0.0.1:8000/health        # {"status":"ok"}
 curl -i http://127.0.0.1:8000/health/db  # DB 정상: 200 / DB 불가: 503
 ```
+
+### 6-1. OCR 서버 (사진 → 소비기한, 선택)
+
+별도 venv `.venv-ocr` (PaddleOCR + onnxruntime, CPU). 흐름: 날짜 영역 검출(YOLOX-s ONNX) → 크롭 OCR → 회전 재시도 → 전체 사진 OCR.
+ONNX 파일(`outputs/roi_det/yolox_s_full_e80/best.onnx`)은 git 에 없으므로 체크포인트에서 한 번 만든다 (`.venv-det`).
+파일이 없으면 서버는 전체 사진 OCR 만 한다 (`/health` 의 `roi_model`).
+
+```bash
+.venv-det/bin/python scripts/export_roi_onnx.py      # ckpt sha256 확인 후 best.onnx 생성
+.venv-ocr/bin/uvicorn ocr_service.server:app --host 127.0.0.1 --port 8001
+curl http://127.0.0.1:8001/health
+```
+
+백엔드는 `POST /ocr/expiry` 로 이 서버에 넘긴다. 응답의 `stage` = `roi` / `roi_rotate` / `full`.
+데이터 출처: ExpDate (Seker & Ahn 2022, CC BY 4.0) https://felizang.github.io/expdate/
 
 - `/health` 는 DB 를 건드리지 않습니다(앱 자체 생존 확인).
 - `/health/db` 는 DB 연결만 확인하며 버전·호스트 등 내부 정보를 노출하지 않습니다.
