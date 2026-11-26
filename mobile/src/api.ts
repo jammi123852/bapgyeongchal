@@ -112,6 +112,12 @@ async function request<T>(path: string, init: RequestInit & { token?: string | n
 }
 
 export const api = {
+  // 기기 키로 계정 받기 (없으면 서버가 만든다). 로그인 화면 대신 앱 시작 시 호출.
+  device: (deviceKey: string) =>
+    request<{ access_token: string }>('/auth/device', {
+      method: 'POST',
+      body: JSON.stringify({ device_key: deviceKey }),
+    }),
   signup: (email: string, password: string) =>
     request<{ access_token: string }>('/auth/signup', {
       method: 'POST',

@@ -8,7 +8,8 @@ Step 9(2~3명 2주 실사용 검증)는 사람이 진행해야 하는 단계라 
 
 | 기능 | API |
 |---|---|
-| 가입 / 로그인 / 로그아웃 / 내 정보 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout`, `GET /me` |
+| 기기 자동 계정 (앱은 로그인 화면 없음) | `POST /auth/device` (기기 키 → 토큰, 없으면 계정 생성) |
+| 이메일 가입 / 로그인 (앱 미사용, 서버에만 남김) / 로그아웃 / 내 정보 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout`, `GET /me` |
 | 음식 등록 · 목록(임박순) · 상세 · 수정 · 삭제(soft) | `POST/GET /inventory`, `GET/PATCH/DELETE /inventory/{id}` |
 | 원탭 기록 (다 먹음 / 일부 / 버림 / 기한 지남) | `POST /inventory/{id}/actions` |
 | 오늘 먼저 먹을 것 (baseline1 + 이유) + 기록 | `POST /eat-first`, `POST /eat-first/{batch_id}/shown` |

@@ -25,7 +25,6 @@ import { colors, radius, space } from '../theme';
 interface Props {
   token: string;
   onAdd: () => void;
-  onLogout: () => void;
   onUnauthorized: () => void;
 }
 
@@ -36,7 +35,7 @@ const ACTION_DONE_TEXT: Record<ActionType, string> = {
   MARKED_EXPIRED: '기한 지남으로 기록했어요',
 };
 
-export function HomeScreen({ token, onAdd, onLogout, onUnauthorized }: Props) {
+export function HomeScreen({ token, onAdd, onUnauthorized }: Props) {
   const [batch, setBatch] = useState<EatFirstBatch | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,9 +104,6 @@ export function HomeScreen({ token, onAdd, onLogout, onUnauthorized }: Props) {
     <View style={styles.screen}>
       <View style={styles.topBar}>
         <Text style={styles.brand}>SoloSafe</Text>
-        <Pressable accessibilityRole="button" onPress={onLogout} hitSlop={12}>
-          <Text style={styles.logout}>로그아웃</Text>
-        </Pressable>
       </View>
 
       <ScrollView
@@ -201,7 +197,6 @@ const styles = StyleSheet.create({
     paddingBottom: space.md,
   },
   brand: { fontSize: 20, fontWeight: '800', color: colors.primary },
-  logout: { fontSize: 14, color: colors.sub },
   content: { paddingHorizontal: space.lg, gap: space.md, maxWidth: 560, width: '100%', alignSelf: 'center' },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.text, marginTop: space.md },
   recCard: {
