@@ -1,4 +1,4 @@
-// 홈: 오늘 먼저 먹을 것(상위 3개 + 이유) → 나머지 냉장고 목록. 모든 항목에서 원탭 기록.
+// 홈: 오늘 먼저 먹을 것(상위 3개 + 이유) → 임박 재료로 만들 요리 → 나머지 냉장고 목록. 모든 항목에서 원탭 기록.
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 
 import { ActionButtons } from '../components/ActionButtons';
-import { ActionType, ApiError, EatFirstBatch, InventoryItem, api } from '../api';
+import { RecipeCard } from '../components/RecipeCard';
+import { ActionType, ApiError, EatFirstBatch, InventoryItem, RecipeSuggestion, api } from '../api';
 import { dDayLabel } from '../dates';
 
 const REMAINING_LABEL: Record<string, string> = { '0.75': '3/4 남음', '0.50': '절반 남음', '0.25': '1/4 남음' };
@@ -38,6 +39,7 @@ const ACTION_DONE_TEXT: Record<ActionType, string> = {
 export function HomeScreen({ token, onAdd, onUnauthorized }: Props) {
   const [batch, setBatch] = useState<EatFirstBatch | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [recipes, setRecipes] = useState<RecipeSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -60,6 +62,8 @@ export function HomeScreen({ token, onAdd, onUnauthorized }: Props) {
       const [nextBatch, nextItems] = await Promise.all([api.eatFirst(token), api.listItems(token)]);
       setBatch(nextBatch);
       setItems(nextItems);
+      // 요리 추천은 부가 기능: 실패해도 홈은 그대로 보여준다
+      api.suggestRecipes(token).then(setRecipes).catch(() => setRecipes([]));
     } catch (e) {
       handleError(e);
     } finally {
@@ -151,6 +155,15 @@ export function HomeScreen({ token, onAdd, onUnauthorized }: Props) {
             <Text style={styles.emptyText}>냉장고가 비어 있어요.</Text>
             <Text style={styles.emptySub}>아래 + 버튼으로 음식을 추가해 보세요.</Text>
           </View>
+        )}
+
+        {recipes.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>임박 재료로 만들 요리</Text>
+            {recipes.map((r) => (
+              <RecipeCard key={r.recipe_id} recipe={r} />
+            ))}
+          </>
         )}
 
         {rest.length > 0 && <Text style={styles.sectionTitle}>냉장고 나머지</Text>}

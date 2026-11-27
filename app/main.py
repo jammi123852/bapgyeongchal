@@ -18,6 +18,7 @@ from app.api.routes import eat_first as eat_first_routes
 from app.api.routes import health as health_routes
 from app.api.routes import inventory as inventory_routes
 from app.api.routes import ocr as ocr_routes
+from app.api.routes import recipes as recipe_routes
 from app.core.config import get_settings
 from app.db.session import SessionLocal, check_database_connection
 
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory_routes.router)
     app.include_router(eat_first_routes.router)
     app.include_router(ocr_routes.router)
+    app.include_router(recipe_routes.router)
     return app
 
 

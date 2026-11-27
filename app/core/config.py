@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     ocr_service_url: str = "http://127.0.0.1:8001"
     ocr_timeout_seconds: float = 60.0
 
+    # 레시피 수집 (scripts/import_recipes_*.py 만 사용, 앱 요청 경로에서는 부르지 않는다).
+    # 둘 다 무료 키. 값은 .env 에만 둔다.
+    foodsafety_api_key: str | None = None  # 식품안전나라 인증키 (COOKRCP01)
+    youtube_api_key: str | None = None  # YouTube Data API v3
+
     # 브라우저(Expo web) 개발용 허용 origin. 네이티브 앱은 CORS 와 무관하다.
     cors_origins: list[str] = ["http://localhost:8081", "http://127.0.0.1:8081"]
 

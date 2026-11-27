@@ -86,3 +86,15 @@ class ProductSource(str, Enum):
     I2570 = "I2570"
     HACCP = "HACCP"
     OFF = "OFF"
+
+
+class RecipeSource(str, Enum):
+    """레시피 출처.
+
+    FOODSAFETY: 식품안전나라 조리식품 레시피 (COOKRCP01, 공공데이터)
+    YOUTUBE: 유튜브 영상. 영상 설명란·올린 사람 댓글에서 뽑은 재료 이름과 영상 ID 만 저장한다
+             (설명란·댓글 원문은 저장하지 않는다).
+    """
+
+    FOODSAFETY = "FOODSAFETY"
+    YOUTUBE = "YOUTUBE"

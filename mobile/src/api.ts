@@ -53,6 +53,28 @@ export interface OcrResult {
   seconds: number;
 }
 
+export interface RecipeUse {
+  item_id: string;
+  name: string;
+  days_left: number | null;
+  urgent: boolean;
+}
+
+export interface RecipeSuggestion {
+  recipe_id: string;
+  source: 'FOODSAFETY' | 'YOUTUBE';
+  name: string;
+  category: string | null;
+  image_url: string | null;
+  url: string | null; // 유튜브 영상 주소
+  video_id: string | null;
+  channel_title: string | null;
+  steps: string[] | null; // 식약처 레시피만
+  uses: RecipeUse[];
+  missing: string[]; // 더 필요한 재료 (기본 양념 제외)
+  attribution: string;
+}
+
 // 사진 1장. 폰에서는 uri, 웹에서는 File 객체를 쓴다.
 export interface PhotoInput {
   uri: string;
@@ -161,6 +183,8 @@ export const api = {
     }
     return request<OcrResult>('/ocr/expiry', { method: 'POST', body: form, token });
   },
+  suggestRecipes: (token: string, limit = 5) =>
+    request<RecipeSuggestion[]>(`/recipes/suggest?limit=${limit}`, { token }),
   markShown: (token: string, batchId: string) =>
     request<void>(`/eat-first/${batchId}/shown`, { method: 'POST', token }),
 };
